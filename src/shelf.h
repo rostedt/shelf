@@ -97,6 +97,19 @@ static inline uint64_t swap64(struct shelf *shelf, uint64_t val)
 		(val & 0xff00000000000000ULL) >> 56;
 }
 
+static inline uint64_t read_offset(struct shelf *shelf, uint64_t addr)
+{
+	void *ptr = shelf->map + addr;
+
+	if (addr > shelf->size)
+		return 0;
+
+	if (shelf->sixtyfour)
+		return swap64(shelf, *(uint64_t *)ptr);
+	else
+		return swap32(shelf, *(uint32_t *)ptr);
+}
+
 static inline uint64_t ehdr_shoff(struct shelf *shelf)
 {
 	if (shelf->sixtyfour)

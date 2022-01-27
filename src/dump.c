@@ -63,16 +63,10 @@ static union Elf_Sym *find_symbol(struct shelf *shelf, const char *sec)
 static int print_addr(struct ccli *ccli, struct shelf *shelf,
 		       uint64_t addr, uint64_t offset, int line)
 {
-	uint64_t val64;
-	uint32_t val32;
-
-	if (shelf->sixtyfour) {
-		val64 = *((uint64_t *)(shelf->map + offset));
-		return ccli_page(ccli, line, "%16zx:\t%16zx\n", addr, val64);
-	} else {
-		val32 = *((uint32_t *)(shelf->map + offset));
-		return ccli_page(ccli, line, "%8zx:\t%8x\n", addr, val32);
-	}
+	if (shelf->sixtyfour)
+		return ccli_page(ccli, line, "%16zx:\t%16zx\n", addr, read_offset(shelf, offset));
+	else
+		return ccli_page(ccli, line, "%8zx:\t%8zx\n", addr, read_offset(shelf, offset));
 }
 
 static int dump_symbol(struct ccli *ccli, void *data,
