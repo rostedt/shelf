@@ -56,7 +56,9 @@ struct shelf {
 	uint64_t		symnum;
 	uint16_t		shentsize;
 	uint16_t		shnum;
+	uint16_t		fileshnum; // # of entries in shdrs
 	union Elf_Ehdr		*ehdr;
+	union Elf_Shdr		**shdrs; // addr sorted of file sections
 	enum endian		endian;
 	bool			sixtyfour;
 	int			fd;
@@ -162,7 +164,7 @@ static inline uint64_t shdr_offset(struct shelf *shelf, union Elf_Shdr *shdr)
 		return swap32(shelf, shdr->h32.sh_offset);
 }
 
-static inline uint64_t shdr_size(struct shelf *shelf, union Elf_Shdr *shdr)
+static inline uint64_t shdr_size(struct shelf *shelf, const union Elf_Shdr *shdr)
 {
 	if (shelf->sixtyfour)
 		return swap64(shelf, shdr->h64.sh_size);
@@ -194,7 +196,7 @@ static inline uint64_t shdr_flags(struct shelf *shelf, union Elf_Shdr *shdr)
 		return swap32(shelf, shdr->h32.sh_flags);
 }
 
-static inline uint64_t shdr_addr(struct shelf *shelf, union Elf_Shdr *shdr)
+static inline uint64_t shdr_addr(struct shelf *shelf, const union Elf_Shdr *shdr)
 {
 	if (shelf->sixtyfour)
 		return swap64(shelf, shdr->h64.sh_addr);
@@ -339,5 +341,7 @@ int section_completion(struct ccli *ccli, struct shelf *shelf,
 		       char ***list, int word, uint32_t type);
 int symbol_completion(struct ccli *ccli, struct shelf *shelf,
 		      char ***list, int word);
+
+union Elf_Shdr *find_section(struct shelf *shelf, uint64_t addr);
 
 #endif

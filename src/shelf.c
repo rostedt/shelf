@@ -65,12 +65,75 @@ static void load_symbols(struct shelf *shelf, union Elf_Shdr *shdr)
 		shelf->symnum = 0;
 }
 
+static int shdr_cmp(const void *A, const void *B, void *data)
+{
+	struct shelf *shelf = data;
+	union Elf_Shdr * const *a = A;
+	union Elf_Shdr * const *b = B;
+	uint64_t addr_a, addr_b;
+
+	addr_a = shdr_addr(shelf, *a);
+	addr_b = shdr_addr(shelf, *b);
+
+	if (addr_a < addr_b)
+		return -1;
+
+	return addr_a == addr_b;
+}
+
+static struct shelf *local_shelf;
+
+static int shdr_key_cmp(const void *A, const void *B)
+{
+	struct shelf *shelf = local_shelf;
+	const uint64_t *a = A;
+	union Elf_Shdr * const *b = B;
+	uint64_t addr_a;
+	uint64_t addr_b;
+	uint64_t size_b;
+
+	addr_a = *a;
+	addr_b = shdr_addr(shelf, *b);
+	size_b = shdr_size(shelf, *b);
+
+	if (addr_a >= addr_b && addr_a < (addr_b + size_b))
+		return 0;
+
+	if (addr_a < addr_b)
+		return -1;
+
+	return 1;
+}
+
+union Elf_Shdr *find_section(struct shelf *shelf, uint64_t addr)
+{
+	union Elf_Shdr **pshdr;
+
+	if (!shelf->fileshnum)
+		return NULL;
+
+	local_shelf = shelf;
+
+	pshdr = bsearch(&addr, shelf->shdrs, shelf->fileshnum, sizeof(*pshdr),
+			shdr_key_cmp);
+
+	if (!pshdr)
+		return NULL;
+
+	return *pshdr;
+}
+
 static void read_sections(struct shelf *shelf)
 {
+	union Elf_Shdr **shdrs;
 	union Elf_Shdr *shdr;
 	const char *name;
+	uint64_t addr;
 	uint32_t type;
 	int i;
+
+	shelf->shdrs = 0;
+	shelf->fileshnum = 0;
 
 	for (i = 0; i < shelf->shnum; i++) {
 		shdr = get_shdr(shelf, i);
@@ -89,7 +152,17 @@ static void read_sections(struct shelf *shelf)
 			shelf->strsize = shdr_size(shelf, shdr);
 			break;
 		}
+		addr = shdr_addr(shelf, shdr);
+		if (type != SHT_NOBITS && addr) {
+			shdrs = realloc(shelf->shdrs, (shelf->fileshnum + 1) * sizeof(*shdrs));
+			if (!shdrs)
+				pdie("Allocating sections");
+			shdrs[shelf->fileshnum++] = shdr;
+			shelf->shdrs = shdrs;
+		}
 	}
+	if (shelf->shdrs)
+		qsort_r(shelf->shdrs, shelf->fileshnum, sizeof(*shdrs), shdr_cmp, shelf);
 }
 
 int section_completion(struct ccli *ccli, struct shelf *shelf,

@@ -3,6 +3,7 @@
  * Copyright (C) 2022 Google Inc, Steven Rostedt <rostedt@goodmis.org>
  */
 #include <regex.h>
+#include <errno.h>
 #include "shelf.h"
 
 static void dump_usage(struct ccli *ccli)
@@ -17,7 +18,7 @@ static int dump_symbol_usage(struct ccli *ccli)
 	return 0;
 }
 
-static union Elf_Shdr *find_section(struct shelf *shelf, const char *sec)
+static union Elf_Shdr *lookup_section(struct shelf *shelf, const char *sec)
 {
 	union Elf_Shdr *shdr;
 	const char *name;
@@ -38,7 +39,7 @@ static int dump_section(struct ccli *ccli, void *data,
 	struct shelf *shelf = data;
 	union Elf_Shdr *shdr;
 
-	shdr = find_section(shelf, argv[0]);
+	shdr = lookup_section(shelf, argv[0]);
 	if (!shdr)
 		ccli_printf(ccli, "Section '%s' not found\n", argv[0]);
 
@@ -158,6 +159,76 @@ static int dump_symbol(struct ccli *ccli, void *data,
 	return 0;
 }
 
+static int dump_address(struct ccli *ccli, void *data,
+			int argc, char **argv)
+{
+	struct shelf *shelf = data;
+	union Elf_Shdr *shdr;
+	const char *name;
+	uint64_t offset;
+	uint64_t addr;
+	uint64_t end_addr;
+	int line = 1;
+	int inc;
+
+	if (argc < 1)
+		return 0; // TODO add usage
+
+	errno = 0;
+	addr = strtoull(argv[0], NULL, 0);
+	if (errno) {
+		ccli_printf(ccli, "%s: %s\n", argv[0], strerror(errno));
+		return 0;
+	}
+
+	shdr = find_section(shelf, addr);
+	if (!shdr) {
+		ccli_printf(ccli, "No section found with address %zx %s\n", addr, argv[0]);
+		return 0;
+	}
+
+	offset = addr - shdr_addr(shelf, shdr);
+	offset += shdr_offset(shelf, shdr);
+
+	name = shdr_name(shelf, shdr);
+
+	if (argc < 2) {
+		if (name)
+			ccli_printf(ccli, "%s:\t", name);
+		print_addr(ccli, shelf, addr, offset, 1);
+		return 0;
+	}
+
+	if (strcmp(argv[1], "-") == 0) {
+		if (argc > 2)
+			end_addr = strtoull(argv[2], NULL, 0);
+		else
+			end_addr = shdr_addr(shelf, shdr) + shdr_size(shelf, shdr);
+	} else {
+		end_addr = strtoull(argv[1], NULL, 0);
+		end_addr += addr;
+	}
+
+	if (end_addr > shdr_addr(shelf, shdr) + shdr_size(shelf, shdr))
+		end_addr = shdr_addr(shelf, shdr) + shdr_size(shelf, shdr);
+
+	if (name)
+		line = ccli_page(ccli, line, "%s:\n", name);
+
+	inc = shelf->sixtyfour ? 8 : 4;
+
+	while (line >= 0 && addr < end_addr) {
+		line = ccli_page(ccli, line, "  ");
+		if (line < 0)
+			return 0;
+		line = print_addr(ccli, shelf, addr, offset, line);
+		addr += inc;
+		offset += inc;
+	}
+
+	return 0;
+}
+
 int dump_cmd(struct ccli *ccli, const char *command, const char *line,
 	     void *data, int argc, char **argv)
 {
@@ -171,6 +242,9 @@ int dump_cmd(struct ccli *ccli, const char *command, const char *line,
 
 	if (strcmp(argv[1], "symbol") == 0)
 		return dump_symbol(ccli, data, argc - 2, argv + 2);
+
+	if (strcmp(argv[1], "address") == 0)
+		return dump_address(ccli, data, argc - 2, argv + 2);
 
 	return 0;
 }
@@ -215,7 +289,7 @@ int dump_completion(struct ccli *ccli, const char *command,
 		    const char *line, int word,
 		    char *match, char ***list, void *data)
 {
-	char *types[] = { "section", "symbol" };
+	char *types[] = { "section", "symbol", "address" };
 	char **words;
 	char **argv;
 	int argc;
