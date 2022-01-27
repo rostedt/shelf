@@ -86,8 +86,10 @@ static int dump_symbol(struct ccli *ccli, void *data,
 		return dump_symbol_usage(ccli);
 
 	sym = find_symbol(shelf, argv[0]);
-	if (!sym)
+	if (!sym) {
 		ccli_printf(ccli, "Symbol '%s' not found\n", argv[0]);
+		return 0;
+	}
 
 	shndx = sym_shndx(shelf, sym);
 	shdr = get_shdr(shelf, shndx);
