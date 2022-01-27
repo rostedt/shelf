@@ -292,6 +292,8 @@ int main (int argc, char **argv)
 	if (argc < 2)
 		usage(argv);
 
+	memset(&shelf, 0, sizeof(shelf));
+
 	shelf.file = argv[1];
 	shelf.fd = open(argv[1], O_RDONLY);
 	if (shelf.fd < 0)
