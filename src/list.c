@@ -114,6 +114,18 @@ static int show_section(struct ccli *ccli, struct shelf *shelf, int i, int line,
 	return line;
 }
 
+static regex_t *get_regex(regex_t *preg, struct ccli *ccli, const char *str)
+{
+	int ret;
+
+	ret = regcomp(preg, str, REG_ICASE|REG_NOSUB);
+	if (ret < 0) {
+		ccli_printf(ccli, "\nInvalid regex %s\n", str);
+		return NULL;
+	}
+	return preg;
+}
+
 static int list_sections(struct ccli *ccli, void *data,
 			int argc, char **argv)
 {
@@ -121,20 +133,20 @@ static int list_sections(struct ccli *ccli, void *data,
 	regex_t *preg = NULL;
 	regex_t reg;
 	int line = 1;
-	int ret;
 	int i;
 
 	if (argc > 0) {
-	       ret = regcomp(&reg, argv[0], REG_ICASE|REG_NOSUB);
-	       if (ret < 0) {
-		       ccli_printf(ccli, "\nInvalid regex %s\n", argv[0]);
-		       return 0;
-	       }
-	       preg = &reg;
+		preg = get_regex(&reg, ccli, argv[0]);
+		if (!preg)
+			return 0;
 	}
 
 	for (i = 0; line >= 0 && i < shelf->shnum; i++)
 		line = show_section(ccli, shelf, i, line, preg);
+
+	if (preg)
+		regfree(preg);
+
 	return 0;
 }
 
@@ -231,20 +243,20 @@ static int list_symbols(struct ccli *ccli, void *data,
 	regex_t *preg = NULL;
 	regex_t reg;
 	int line = 1;
-	int ret;
 	int i;
 
 	if (argc > 0) {
-	       ret = regcomp(&reg, argv[0], REG_ICASE|REG_NOSUB);
-	       if (ret < 0) {
-		       ccli_printf(ccli, "\nInvalid regex %s\n", argv[0]);
-		       return 0;
-	       }
-	       preg = &reg;
+		preg = get_regex(&reg, ccli, argv[0]);
+		if (!preg)
+			return 0;
 	}
 
 	for (i = 0; line >= 0 && i < shelf->symnum; i++)
 		line = show_symbol(ccli, shelf, i, line, preg);
+
+	if (preg)
+		regfree(preg);
+
 	return 0;
 }
 
