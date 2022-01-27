@@ -25,6 +25,16 @@ union Elf_Sym {
 	Elf64_Sym		h64;
 };
 
+union Elf_Rel {
+	Elf32_Rel		h32;
+	Elf64_Rel		h64;
+};
+
+union Elf_Rela {
+	Elf32_Rela		h32;
+	Elf64_Rela		h64;
+};
+
 enum endian {
 	ENDIAN_SAME,		/* file and machine match */
 	ENDIAN_LITTLE,		/* file little, machine is big */
@@ -242,6 +252,62 @@ static inline uint64_t sym_value(struct shelf *shelf, union Elf_Sym *sym)
 		return swap32(shelf, sym->h32.st_value);
 }
 
+static inline uint64_t rel_offset(struct shelf *shelf, union Elf_Rel *rel)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, rel->h64.r_offset);
+	else
+		return swap32(shelf, rel->h32.r_offset);
+}
+
+static inline uint64_t rel_info_type(struct shelf *shelf, union Elf_Rel *rel)
+{
+	if (shelf->sixtyfour)
+		return ELF64_R_TYPE(swap64(shelf, rel->h64.r_info));
+	else
+		return ELF32_R_TYPE(swap32(shelf, rel->h32.r_info));
+}
+
+static inline uint64_t rel_info_sym(struct shelf *shelf, union Elf_Rel *rel)
+{
+	if (shelf->sixtyfour)
+		return ELF64_R_SYM(swap64(shelf, rel->h64.r_info));
+	else
+		return ELF32_R_SYM(swap32(shelf, rel->h32.r_info));
+}
+
+static inline uint64_t rela_offset(struct shelf *shelf, union Elf_Rela *rel)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, rel->h64.r_offset);
+	else
+		return swap32(shelf, rel->h32.r_offset);
+}
+
+static inline uint64_t rela_info_type(struct shelf *shelf, union Elf_Rela *rel)
+{
+	if (shelf->sixtyfour)
+		return ELF64_R_TYPE(swap64(shelf, rel->h64.r_info));
+	else
+		return ELF32_R_TYPE(swap32(shelf, rel->h32.r_info));
+}
+
+static inline uint64_t rela_info_sym(struct shelf *shelf, union Elf_Rela *rel)
+{
+	if (shelf->sixtyfour)
+		return ELF64_R_SYM(swap64(shelf, rel->h64.r_info));
+	else
+		return ELF32_R_SYM(swap32(shelf, rel->h32.r_info));
+}
+
+static inline uint64_t rela_addend(struct shelf *shelf, union Elf_Rela *rel)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, rel->h64.r_addend);
+	else
+		return swap32(shelf, rel->h32.r_addend);
+}
+
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
 
 int list_completion(struct ccli *ccli, const char *command,
@@ -257,7 +323,7 @@ int dump_completion(struct ccli *ccli, const char *command,
 		    char *match, char ***list, void *data);
 
 int section_completion(struct ccli *ccli, struct shelf *shelf,
-		       char ***list, int word);
+		       char ***list, int word, uint32_t type);
 int symbol_completion(struct ccli *ccli, struct shelf *shelf,
 		      char ***list, int word);
 

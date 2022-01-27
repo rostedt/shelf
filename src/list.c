@@ -260,6 +260,291 @@ static int list_symbols(struct ccli *ccli, void *data,
 	return 0;
 }
 
+static int do_rel_section(struct ccli *ccli, struct shelf *shelf, int s, int line,
+			  uint32_t reltype, off_t *paddr, uint64_t *pnum,
+			  uint64_t *pentsize, regex_t *preg)
+{
+	union Elf_Shdr *shdr;
+	const char *name;
+	uint64_t size;
+	uint64_t entsize;
+	uint64_t num;
+	uint32_t type;
+
+	shdr = get_shdr(shelf, s);
+	if (!shdr)
+		return -1;
+
+	type = shdr_type(shelf, shdr);
+	if (type != reltype)
+		return line;
+
+	name = shdr_name(shelf, shdr);
+
+	if (preg && !regexec(preg, name, 0, NULL, 0) == 0)
+		return line;
+
+	if (line == 1) {
+		line = ccli_page(ccli, line, " Section name                          Size         Elements\n");
+		line = ccli_page(ccli, line, " ------------                          ----         --------\n");
+	}
+
+	line = ccli_page(ccli, line, "%s:%*s", name, (int)(30 - strlen(name)), "");
+	if (line < 0)
+		return -1;
+
+	size = shdr_size(shelf, shdr);
+	entsize = shdr_entsize(shelf, shdr);
+
+	num = entsize ? size / entsize : 1;
+
+	ccli_printf(ccli, "%12zd\t%12zd", size, num);
+
+	ccli_printf(ccli, "\n");
+
+	*paddr = shdr_offset(shelf, shdr);
+	*pnum = num;
+	*pentsize = entsize;
+
+	return line;
+}
+
+static int show_rel_entry(struct ccli *ccli, struct shelf *shelf,
+			  union Elf_Rel *rel, int line, regex_t *preg,
+			  bool *first)
+{
+	union Elf_Sym *sym;
+	const char *name = NULL;
+	uint64_t offset;
+	uint64_t type;
+	uint64_t symidx;
+
+	offset = rel_offset(shelf, rel);
+	type = rel_info_type(shelf, rel);
+	symidx = rel_info_sym(shelf, rel);
+
+	sym = get_sym(shelf, symidx);
+	if (preg && !sym)
+		return line;
+
+	if (sym) {
+		name = sym_name(shelf, sym);
+		if (preg && !regexec(preg, name, 0, NULL, 0) == 0)
+			return line;
+	}
+
+	if (*first) {
+		*first = false;
+		line = ccli_page(ccli, line, "       offset              type      sym idx\t  symbol name\n");
+		if (line < 0)
+			return -1;
+		line = ccli_page(ccli, line, "       ------              ----      -------\t  -----------\n");
+		if (line < 0)
+			return -1;
+	}
+
+	line = ccli_page(ccli, line, "  %12zx  %6zd %12zd",
+			 offset, type, symidx);
+	if (line < 0)
+		return -1;
+
+	if (name)
+		ccli_printf(ccli, "\t%s", name);
+
+	ccli_printf(ccli, "\n");
+	return line;
+}
+
+static int show_rel_section(struct ccli *ccli, struct shelf *shelf, int s, int line,
+			    regex_t *preg, regex_t *pregsym)
+{
+	uint64_t entsize;
+	uint64_t num;
+	off_t addr;
+	bool first = true;
+	int orig_line = line;
+	int i;
+
+	line = do_rel_section(ccli, shelf, s, line, SHT_REL, &addr, &num, &entsize, preg);
+	if (line < 0)
+		return -1;
+
+	/* If our section is not found */
+	if (orig_line == line)
+		return line;
+
+	if (!preg)
+		return line;
+
+	for (i = 0; line >= 0 && i < num; i++) {
+		union Elf_Rel *rel;
+
+		rel = shelf->map + addr + (i * entsize);
+		line = show_rel_entry(ccli, shelf, rel, line, pregsym, &first);
+	}
+
+	return line;
+}
+
+static int list_rels(struct ccli *ccli, void *data,
+		     int argc, char **argv)
+{
+	struct shelf *shelf = data;
+	regex_t *pregsym = NULL;
+	regex_t *preg = NULL;
+	regex_t regsym;
+	regex_t reg;
+	bool found = false;
+	int line = 1;
+	int i;
+
+	if (argc > 0) {
+		preg = get_regex(&reg, ccli, argv[0]);
+		if (!preg)
+			return 0;
+	}
+
+	if (argc > 1) {
+		pregsym = get_regex(&regsym, ccli, argv[1]);
+		if(!pregsym)
+			goto out;
+	}
+
+	for (i = 0; line >= 0 && i < shelf->shnum; i++) {
+		line = show_rel_section(ccli, shelf, i, line, preg, pregsym);
+		if (line != 1)
+			found = true;
+	}
+
+	if (!preg && !found)
+		ccli_printf(ccli, "No REL type sections found\n");
+
+ out:
+	if (preg)
+		regfree(preg);
+
+	return 0;
+}
+
+static int show_rela_entry(struct ccli *ccli, struct shelf *shelf,
+			   union Elf_Rela *rel, int line, regex_t *preg,
+			   bool *first)
+{
+	union Elf_Sym *sym;
+	const char *name = NULL;
+	uint64_t offset;
+	uint64_t type;
+	uint64_t symidx;
+	int64_t addend;
+
+	offset = rela_offset(shelf, rel);
+	type = rela_info_type(shelf, rel);
+	symidx = rela_info_sym(shelf, rel);
+	addend = rela_addend(shelf, rel);
+
+	sym = get_sym(shelf, symidx);
+	if (preg && !sym)
+		return line;
+
+	if (sym) {
+		name = sym_name(shelf, sym);
+		if (preg && !regexec(preg, name, 0, NULL, 0) == 0)
+			return line;
+	}
+
+	if (*first) {
+		*first = false;
+		line = ccli_page(ccli, line, "       offset              addend    type      sym idx\t  symbol name\n");
+		if (line < 0)
+			return -1;
+		line = ccli_page(ccli, line, "       ------              ------    ----      -------\t  -----------\n");
+		if (line < 0)
+			return -1;
+	}
+
+	line = ccli_page(ccli, line, "  %12zx (%12zd)  %6zd %12zd",
+			 offset, addend, type, symidx);
+	if (line < 0)
+		return -1;
+
+	if (name)
+		ccli_printf(ccli, "\t%s", name);
+
+	ccli_printf(ccli, "\n");
+	return line;
+}
+
+static int show_rela_section(struct ccli *ccli, struct shelf *shelf, int s, int line,
+			    regex_t *preg, regex_t *pregsym)
+{
+	uint64_t entsize;
+	uint64_t num;
+	off_t addr;
+	bool first = true;
+	int orig_line = line;
+	int i;
+
+	line = do_rel_section(ccli, shelf, s, line, SHT_RELA, &addr, &num, &entsize, preg);
+	if (line < 0)
+		return -1;
+
+	/* If our section is not found */
+	if (orig_line == line)
+		return line;
+
+	if (!preg)
+		return line;
+
+	for (i = 0; line >= 0 && i < num; i++) {
+		union Elf_Rela *rela;
+
+		rela = shelf->map + addr + (i * entsize);
+		line = show_rela_entry(ccli, shelf, rela, line, pregsym, &first);
+	}
+
+	return line;
+}
+
+static int list_relas(struct ccli *ccli, void *data,
+		      int argc, char **argv)
+{
+	struct shelf *shelf = data;
+	regex_t *pregsym = NULL;
+	regex_t *preg = NULL;
+	regex_t regsym;
+	regex_t reg;
+	bool found = false;
+	int line = 1;
+	int i;
+
+	if (argc > 0) {
+		preg = get_regex(&reg, ccli, argv[0]);
+		if (!preg)
+			return 0;
+	}
+
+	if (argc > 1) {
+		pregsym = get_regex(&regsym, ccli, argv[1]);
+		if(!pregsym)
+			goto out;
+	}
+
+	for (i = 0; line >= 0 && i < shelf->shnum; i++) {
+		line = show_rela_section(ccli, shelf, i, line, preg, pregsym);
+		if (line != 1)
+			found = true;
+	}
+
+	if (!preg && !found)
+		ccli_printf(ccli, "No RELA type sections found\n");
+
+ out:
+	if (preg)
+		regfree(preg);
+
+	return 0;
+}
+
 int list_cmd(struct ccli *ccli, const char *command, const char *line,
 	     void *data, int argc, char **argv)
 {
@@ -274,6 +559,12 @@ int list_cmd(struct ccli *ccli, const char *command, const char *line,
 	if (strcmp(argv[1], "symbols") == 0)
 		return list_symbols(ccli, data, argc - 2, argv + 2);
 
+	if (strcmp(argv[1], "rel") == 0)
+		return list_rels(ccli, data, argc - 2, argv + 2);
+
+	if (strcmp(argv[1], "rela") == 0)
+		return list_relas(ccli, data, argc - 2, argv + 2);
+
 	return 0;
 }
 
@@ -281,8 +572,8 @@ static int list_section_completion(struct ccli *ccli, void *data,
 				   int argc, char **argv,
 				   char ***list, int word, char *match)
 {
-	if (!argc || (argc == 1 && !strlen(match)))
-		return section_completion(ccli, data, list, word);
+	if (!argc || (argc == 1 && strlen(match)))
+		return section_completion(ccli, data, list, word, 0);
 
 	return 0;
 }
@@ -291,17 +582,41 @@ static int list_symbol_completion(struct ccli *ccli, void *data,
 				  int argc, char **argv,
 				  char ***list, int word, char *match)
 {
-	if (!argc)
+	if (!argc || (argc == 1 && strlen(match)))
 		return symbol_completion(ccli, data, list, word);
 
 	return 0;
+}
+
+static int rel_completion(struct ccli *ccli, void *data,
+			  int argc, char **argv,
+			  char ***list, int word, char *match,
+			  uint32_t type)
+{
+	if (!argc || (argc == 1 && strlen(match)))
+		return section_completion(ccli, data, list, word, type);
+	return 0;
+}
+
+static int list_rel_completion(struct ccli *ccli, void *data,
+			       int argc, char **argv,
+			       char ***list, int word, char *match)
+{
+	return rel_completion(ccli, data, argc, argv, list, word, match, SHT_REL);
+}
+
+static int list_rela_completion(struct ccli *ccli, void *data,
+				int argc, char **argv,
+				char ***list, int word, char *match)
+{
+	return rel_completion(ccli, data, argc, argv, list, word, match, SHT_RELA);
 }
 
 int list_completion(struct ccli *ccli, const char *command,
 		    const char *line, int word,
 		    char *match, char ***list, void *data)
 {
-	char *types[] = { "sections", "symbols" };
+	char *types[] = { "sections", "symbols", "rel", "rela" };
 	char **words;
 	char **argv;
 	int argc;
@@ -329,6 +644,14 @@ int list_completion(struct ccli *ccli, const char *command,
 	if (strcmp(argv[1], "symbols") == 0)
 		ret = list_symbol_completion(ccli, data, argc - 2, argv + 2,
 					     list, word - 2, match);
+
+	if (strcmp(argv[1], "rel") == 0)
+		ret = list_rel_completion(ccli, data, argc - 2, argv + 2,
+					  list, word - 2, match);
+
+	if (strcmp(argv[1], "rela") == 0)
+		ret = list_rela_completion(ccli, data, argc - 2, argv + 2,
+					   list, word - 2, match);
 
 	ccli_argv_free(argv);
 

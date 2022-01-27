@@ -184,7 +184,7 @@ static int dump_section_completion(struct ccli *ccli, void *data,
 				   char ***list, int word, char *match)
 {
 	if (!argc || (argc == 1 && strlen(match)))
-		return section_completion(ccli, data, list, word);
+		return section_completion(ccli, data, list, word, 0);
 
 	return 0;
 }

@@ -93,22 +93,28 @@ static void read_sections(struct shelf *shelf)
 }
 
 int section_completion(struct ccli *ccli, struct shelf *shelf,
-		       char ***list, int word)
+		       char ***list, int word, uint32_t type)
 {
+	union Elf_Shdr *shdr;
 	const char *name;
 	char **words;
-	int i;
+	int i, s;
 
 	words = calloc(shelf->shnum, sizeof(char *));
 	if (!words)
 		return 0;
-	for (i = 0; i < shelf->shnum; i++) {
-		name = shdr_name(shelf, get_shdr(shelf, i));
+	for (i = 0, s = 0; i < shelf->shnum; i++) {
+		shdr = get_shdr(shelf, i);
+		if (type && type != shdr_type(shelf, shdr))
+			continue;
+
+		name = shdr_name(shelf, get_shdr(shelf, s));
 		if (name)
-			words[i] = strdup(name);
+			words[s] = strdup(name);
+		s++;
 	}
 	*list = words;
-	return i;
+	return s;
 }
 
 int symbol_completion(struct ccli *ccli, struct shelf *shelf,
