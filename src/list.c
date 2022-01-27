@@ -260,6 +260,37 @@ static int list_symbols(struct ccli *ccli, void *data,
 	return 0;
 }
 
+static void print_rel_section(struct ccli *ccli, struct shelf *shelf,
+			      const char *name, uint64_t offset)
+{
+	union Elf_Shdr *shdr;
+	uint64_t addr;
+
+	if (!name)
+		name = "";
+
+	ccli_printf(ccli, "\t%s%*s", name, (int)(26 - strlen(name)), "");
+
+	shdr = find_section(shelf, offset);
+	if (!shdr)
+		return;
+
+	addr = shdr_addr(shelf, shdr);
+	name = shdr_name(shelf, shdr);
+	if (name)
+		ccli_printf(ccli, "\t%s", name);
+	offset -= addr;
+	if (offset > shdr_size(shelf, shdr))
+		return;
+
+	addr = shdr_offset(shelf, shdr);
+	addr += offset;
+	if (shelf->sixtyfour)
+		ccli_printf(ccli, "\t%16zx", read_offset(shelf, addr));
+	else
+		ccli_printf(ccli, "\t%8zx", read_offset(shelf, addr));
+}
+
 static int do_rel_section(struct ccli *ccli, struct shelf *shelf, int s, int line,
 			  uint32_t reltype, off_t *paddr, uint64_t *pnum,
 			  uint64_t *pentsize, regex_t *preg)
@@ -348,10 +379,10 @@ static int show_rel_entry(struct ccli *ccli, struct shelf *shelf,
 	if (line < 0)
 		return -1;
 
-	if (name)
-		ccli_printf(ccli, "\t%s", name);
+	print_rel_section(ccli, shelf, name, offset);
 
 	ccli_printf(ccli, "\n");
+
 	return line;
 }
 
@@ -467,8 +498,7 @@ static int show_rela_entry(struct ccli *ccli, struct shelf *shelf,
 	if (line < 0)
 		return -1;
 
-	if (name)
-		ccli_printf(ccli, "\t%s", name);
+	print_rel_section(ccli, shelf, name, offset);
 
 	ccli_printf(ccli, "\n");
 	return line;
