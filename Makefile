@@ -161,6 +161,11 @@ VIM_TAGS = $(obj)/tags
 EMACS_TAGS = $(obj)/TAGS
 CSCOPE_TAGS = $(obj)/cscope
 
+define find_tag_files
+	find $(src) -name '\.pc' -prune -o -name '*\.[ch]' -print -o -name '*\.[ch]pp' \
+		! -name '\.#' -print
+endef
+
 $(VIM_TAGS): force
 	$(RM) $@
 	$(call find_tag_files) | (cd $(obj) && xargs ctags --extra=+f --c-kinds=+px)
