@@ -204,6 +204,30 @@ static inline uint64_t shdr_addr(struct shelf *shelf, const union Elf_Shdr *shdr
 		return swap32(shelf, shdr->h32.sh_addr);
 }
 
+static inline uint64_t shdr_addralign(struct shelf *shelf, const union Elf_Shdr *shdr)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, shdr->h64.sh_addr);
+	else
+		return swap32(shelf, shdr->h32.sh_addr);
+}
+
+static inline uint32_t shdr_link(struct shelf *shelf, union Elf_Shdr *shdr)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, shdr->h64.sh_link);
+	else
+		return swap32(shelf, shdr->h32.sh_link);
+}
+
+static inline uint32_t shdr_info(struct shelf *shelf, union Elf_Shdr *shdr)
+{
+	if (shelf->sixtyfour)
+		return swap64(shelf, shdr->h64.sh_info);
+	else
+		return swap32(shelf, shdr->h32.sh_info);
+}
+
 static inline union Elf_Shdr *get_shdr(struct shelf *shelf, int idx)
 {
 	if (idx >= shelf->shnum)
