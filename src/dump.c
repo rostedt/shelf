@@ -7,6 +7,43 @@
 #include <errno.h>
 #include "shelf.h"
 
+static void dump_line(struct ccli *ccli, struct shelf *shelf, uint64_t offset)
+{
+	unsigned char ch;
+	int i;
+
+	for (i = 0; i < 8; i++, offset++) {
+		if (offset < shelf->size) {
+			ch = *(unsigned char *)(shelf->map + offset);
+			ccli_printf(ccli, "%02x ", ch);
+		} else
+			ccli_printf(ccli, "   ");
+	}
+	ccli_printf(ccli, " ");
+	for (i = 0; i < 8; i++, offset++) {
+		if (offset < shelf->size) {
+			ch = *(unsigned char *)(shelf->map + offset);
+			ccli_printf(ccli, "%02x ", ch);
+		} else
+			ccli_printf(ccli, "   ");
+	}
+	ccli_printf(ccli, " |");
+
+	offset -= 16;
+
+	for (i = 0; i < 16; i++, offset++) {
+		if (offset < shelf->size) {
+			ch = *(unsigned char *)(shelf->map + offset);
+			if (isprint(ch))
+				ccli_printf(ccli, "%c", ch);
+			else
+				ccli_printf(ccli, ".");
+		} else
+				ccli_printf(ccli, " ");
+	}
+	ccli_printf(ccli, "|\n");
+}
+
 static void dump_usage(struct ccli *ccli)
 {
 	ccli_printf(ccli, "usage: dump section <start-addr>[ - <end-addr>| <size>]\n"
@@ -60,43 +97,6 @@ static union Elf_Sym *find_symbol(struct shelf *shelf, const char *sec)
 			return sym;
 	}
 	return NULL;
-}
-
-static void dump_line(struct ccli *ccli, struct shelf *shelf, uint64_t offset)
-{
-	unsigned char ch;
-	int i;
-
-	for (i = 0; i < 8; i++, offset++) {
-		if (offset < shelf->size) {
-			ch = *(unsigned char *)(shelf->map + offset);
-			ccli_printf(ccli, "%02x ", ch);
-		} else
-			ccli_printf(ccli, "   ");
-	}
-	ccli_printf(ccli, " ");
-	for (i = 0; i < 8; i++, offset++) {
-		if (offset < shelf->size) {
-			ch = *(unsigned char *)(shelf->map + offset);
-			ccli_printf(ccli, "%02x ", ch);
-		} else
-			ccli_printf(ccli, "   ");
-	}
-	ccli_printf(ccli, " |");
-
-	offset -= 16;
-
-	for (i = 0; i < 16; i++, offset++) {
-		if (offset < shelf->size) {
-			ch = *(unsigned char *)(shelf->map + offset);
-			if (isprint(ch))
-				ccli_printf(ccli, "%c", ch);
-			else
-				ccli_printf(ccli, ".");
-		} else
-				ccli_printf(ccli, " ");
-	}
-	ccli_printf(ccli, "|\n");
 }
 
 static int print_addr(struct ccli *ccli, struct shelf *shelf,
