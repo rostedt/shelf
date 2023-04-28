@@ -7,41 +7,69 @@
 #include <errno.h>
 #include "shelf.h"
 
-static void dump_line(struct ccli *ccli, struct shelf *shelf, uint64_t offset)
+static void dump_line(struct ccli *ccli, struct shelf *shelf, uint64_t offset, int len)
 {
 	unsigned char ch;
+	int save_len = len;
 	int i;
 
 	for (i = 0; i < 8; i++, offset++) {
-		if (offset < shelf->size) {
+		if (len && offset < shelf->size) {
 			ch = *(unsigned char *)(shelf->map + offset);
 			ccli_printf(ccli, "%02x ", ch);
+			len--;
 		} else
 			ccli_printf(ccli, "   ");
 	}
+
 	ccli_printf(ccli, " ");
 	for (i = 0; i < 8; i++, offset++) {
-		if (offset < shelf->size) {
+		if (len && offset < shelf->size) {
 			ch = *(unsigned char *)(shelf->map + offset);
 			ccli_printf(ccli, "%02x ", ch);
+			len--;
 		} else
 			ccli_printf(ccli, "   ");
 	}
+
 	ccli_printf(ccli, " |");
 
 	offset -= 16;
+	len = save_len;
 
 	for (i = 0; i < 16; i++, offset++) {
-		if (offset < shelf->size) {
+		if (len && offset < shelf->size) {
 			ch = *(unsigned char *)(shelf->map + offset);
 			if (isprint(ch))
 				ccli_printf(ccli, "%c", ch);
 			else
 				ccli_printf(ccli, ".");
+			len--;
 		} else
 				ccli_printf(ccli, " ");
 	}
 	ccli_printf(ccli, "|\n");
+}
+
+static void dump_lines(struct ccli *ccli, struct shelf *shelf, uint64_t offset, int len, int line)
+{
+	int ret;
+
+	if (offset + len > shelf->size)
+		len = shelf->size - offset;
+
+	while (len) {
+		ret = ccli_page(ccli, line, " \b");
+		if (ret < 0)
+			break;
+		dump_line(ccli, shelf, offset, len);
+		line = ret;
+		offset += 16;
+		if (len > 16)
+			len -= 16;
+		else
+			len = 0;
+	}
 }
 
 static void dump_usage(struct ccli *ccli)
@@ -76,10 +104,26 @@ static int dump_section(struct ccli *ccli, void *data,
 {
 	struct shelf *shelf = data;
 	union Elf_Shdr *shdr;
+	int line = 1;
 
 	shdr = lookup_section(shelf, argv[0]);
-	if (!shdr)
+	if (!shdr) {
 		ccli_printf(ccli, "Section '%s' not found\n", argv[0]);
+		return 0;
+	}
+
+	line = ccli_page(ccli, line, "name:      %s\n", shdr_name(shelf, shdr));
+	line = ccli_page(ccli, line, "type:      %d\n", shdr_type(shelf, shdr));
+	line = ccli_page(ccli, line, "flags:     %llx\n", (long long)shdr_flags(shelf, shdr));
+	line = ccli_page(ccli, line, "addr:      %llx\n", (long long)shdr_addr(shelf, shdr));
+	line = ccli_page(ccli, line, "offset:    %llx\n", (long long)shdr_offset(shelf, shdr));
+	line = ccli_page(ccli, line, "size:      %lld\n", (long long)shdr_size(shelf, shdr));
+	line = ccli_page(ccli, line, "link:      %d\n", shdr_link(shelf, shdr));
+	line = ccli_page(ccli, line, "info:      %x\n", shdr_info(shelf, shdr));
+	line = ccli_page(ccli, line, "addralign: %llx\n", (long long)shdr_addralign(shelf, shdr));
+	line = ccli_page(ccli, line, "entsize:   %llx\n\n", (long long)shdr_entsize(shelf, shdr));
+
+	dump_lines(ccli, shelf, shdr_offset(shelf, shdr), shdr_size(shelf, shdr), line);
 
 	return 0;
 }
@@ -110,7 +154,7 @@ static int print_addr(struct ccli *ccli, struct shelf *shelf,
 	if (line < 0)
 		return -1;
 
-	dump_line(ccli, shelf, offset);
+	dump_line(ccli, shelf, offset, -1);
 	return line;
 }
 
